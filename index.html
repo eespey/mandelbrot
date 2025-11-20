@@ -14,7 +14,7 @@
     <select id="paletteSelect" onchange="changePalette(this.value)" style="padding:8px;background:#222;color:#fff;border:none;border-radius:6px;cursor:pointer">
       <option value="rainbow">Classic Rainbow</option>
       <option value="fire">Fire</option>
-      <option value="ocean">Blue/Purple</option>
+      <option value="ocean">Blues</option>
       <option value="neon">Neon Electric</option>
       <option value="pastel">Soft Pastel</option>
     </select>
@@ -54,9 +54,25 @@ let palette = new Uint32Array(256);
 // === PALETTES ===
 const palettes = {
   rainbow: () => { for(let i=0;i<256;i++){let h=i*360/256,c=0.8,x=c*(1-Math.abs((h/60)%2-1)),m=0.1;let r,g,b;if(h<60)[r,g,b]=[c,x,0];else if(h<120)[r,g,b]=[x,c,0];else if(h<180)[r,g,b]=[0,c,x];else if(h<240)[r,g,b]=[0,x,c];else if(h<300)[r,g,b]=[x,0,c];else[r,g,b]=[c,0,x];palette[i]=0xFF000000+((Math.round((b+m)*255)<<16)|(Math.round((g+m)*255)<<8)|Math.round((r+m)*255));}},
-  fire:    () => { for(let i=0;i<256;i++){let t=i/255;let r=255*t,g=255*t**3,b=255*t**12;palette[i]=0xFF000000+(b<<16)+(g<<8)+r;}},
-  ocean:   () => { for(let i=0;i<256;i++){let t=i/255;let r=20*t*t*255,g=100*t*255,b=255*t*255;palette[i]=0xFF000000+(b<<16)+(g<<8)+r;}},
-  neon:    () => { for(let i=0;i<256;i++){let t=i/255;let r=255*Math.sin(t*12),g=255*Math.sin(t*12+2),b=255*Math.sin(t*12+4);palette[i]=0xFF000000+(Math.round(b)<<16)+(Math.round(g)<<8)+Math.round(r);}},
+  fire: () => {
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255;
+    const r = 255 * Math.pow(t, 0.25);     // bright from the very first iteration
+    const g = 255 * Math.pow(t, 0.7);
+    const b = 255 * Math.pow(t, 5);
+    palette[i] = 0xFF000000 + ((Math.round(b) << 16) | (Math.round(g) << 8) | Math.round(r));
+  }
+},
+ocean: () => {
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255;
+    const r = 30 + 50 * t;                 // subtle warm glow right from i=0
+    const g = 80 + 140 * t;
+    const b = 180 + 75 * t;
+    palette[i] = 0xFF000000 + ((Math.round(b) << 16) | (Math.round(g) << 8) | Math.round(r));
+  }
+},
+neon:    () => { for(let i=0;i<256;i++){let t=i/255;let r=255*Math.sin(t*12),g=255*Math.sin(t*12+2),b=255*Math.sin(t*12+4);palette[i]=0xFF000000+(Math.round(b)<<16)+(Math.round(g)<<8)+Math.round(r);}},
   pastel:  () => { for(let i=0;i<256;i++){let h=i*360/256;let {r,g,b}=hslToRgb(h,0.5,0.8);palette[i]=0xFF000000+(b<<16)+(g<<8)+r;}}
 };
 
