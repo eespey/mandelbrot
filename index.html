@@ -1,34 +1,46 @@
-<body style="margin:0; background:#000; font-family:sans-serif; overflow:hidden;">
+<!DOCTYPE html>
+<html lang="en">
+<body style="margin:0;background:#000;font-family:sans-serif;overflow:hidden">
   <canvas id="canvas"></canvas>
-  
-  <div style="position:absolute; top:10px; left:10px; color:#fff; background:rgba(0,0,0,0.6); padding:8px 12px; border-radius:6px; pointer-events:none;">
+
+  <div style="position:absolute;top:10px;left:10px;color:#fff;background:rgba(0,0,0,0.6);padding:8px 12px;border-radius:6px;pointer-events:none">
     Zoom: <span id="zoom">1.00</span>× | Center: (<span id="cx">-0.5</span>, <span id="cy">0</span>)
   </div>
-  
-  <button onclick="resetView()" style="position:absolute; top:10px; right:10px; padding:8px 16px; background:#333; color:#fff; border:none; border-radius:6px; cursor:pointer;">
-    Reset View
-  </button>
-  
-  <div style="position:absolute; bottom:10px; left:10px; color:#aaa; font-size:12px;">
-    Scroll to zoom • Drag to pan • Share this URL!
+
+  <div style="position:absolute;top:10px;right:10px;display:flex;gap:10px;flex-direction:column;align-items:flex-end">
+    <button onclick="resetView()" style="padding:8px 16px;background:#333;color:#fff;border:none;border-radius:6px;cursor:pointer">
+      Reset View
+    </button>
+    <select id="paletteSelect" onchange="changePalette(this.value)" style="padding:8px;background:#222;color:#fff;border:none;border-radius:6px;cursor:pointer">
+      <option value="rainbow">Classic Rainbow</option>
+      <option value="fire">Fire</option>
+      <option value="ocean">Blue/Purple</option>
+      <option value="neon">Neon Electric</option>
+      <option value="pastel">Soft Pastel</option>
+    </select>
+  </div>
+
+  <div style="position:absolute;bottom:10px;left:10px;color:#aaa;font-size:12px">
+    Scroll to zoom • Drag to pan • Share URL
   </div>
 
 <script>
+// === CONFIG ===
 const ZOOM_FACTOR = 1.5;
- MAX_ITER = 1000;
+const PAN_SPEED   = 1.6;
+const MAX_ITER    = 1000;
 
-let zoom = 1;
-let centerX = -0.5;
-let centerY = 0;
-let isDragging = false;
-let lastX, lastY;
+// === STATE ===
+let zoom = 1, centerX = -0.5, centerY = 0;
+let isDragging = false, lastX, lastY;
+let currentPalette = 'rainbow';
 
+// === CANVAS ===
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const infoZoom = document.getElementById('zoom');
 const infoCX   = document.getElementById('cx');
 const infoCY   = document.getElementById('cy');
-const PAN_SPEED = 1.4;   // ← TUNE THIS! 1.0 = natural, 1.4 = nice and snappy, 2.0 = fast
 
 let width  = canvas.width  = innerWidth;
 let height = canvas.height = innerHeight;
@@ -38,135 +50,109 @@ window.addEventListener('resize', () => {
   render();
 });
 
-// ORIGINAL RAINBOW PALETTE YOU LOVED (back from the first version!)
-const palette = new Uint32Array(256);
-for (let i = 0; i < 256; i++) {
-  const hue = i * 360 / 256;  // full rainbow cycle — this is what made the colors pop!
-  const c = 0.8;
-  const x = c * (1 - Math.abs((hue/60)%2 - 1));
-  const m = 0.1;
-  let r,g,b;
-  if      (hue < 60)  [r,g,b] = [c,x,0];
-  else if (hue < 120) [r,g,b] = [x,c,0];
-  else if (hue < 180) [r,g,b] = [0,c,x];
-  else if (hue < 240) [r,g,b] = [0,x,c];
-  else if (hue < 300) [r,g,b] = [x,0,c];
-  else                [r,g,b] = [c,0,x];
-  r = Math.round((r + m) * 255);
-  g = Math.round((g + m) * 255);
-  b = Math.round((b + m) * 255);
-  palette[i] = 0xFF000000 + (b<<16) + (g<<8) + r;
-}
-
 const imageData = ctx.createImageData(width, height);
 const buf = new Uint32Array(imageData.data.buffer);
+let palette = new Uint32Array(256);
 
-function render() {
-  const scale = 4 / zoom / Math.min(width, height);
+// === PALETTES ===
+const palettes = {
+  rainbow: () => { for(let i=0;i<256;i++){let h=i*360/256,c=0.8,x=c*(1-Math.abs((h/60)%2-1)),m=0.1;let r,g,b;if(h<60)[r,g,b]=[c,x,0];else if(h<120)[r,g,b]=[x,c,0];else if(h<180)[r,g,b]=[0,c,x];else if(h<240)[r,g,b]=[0,x,c];else if(h<300)[r,g,b]=[x,0,c];else[r,g,b]=[c,0,x];palette[i]=0xFF000000+((Math.round((b+m)*255)<<16)|(Math.round((g+m)*255)<<8)|Math.round((r+m)*255));}},
+  fire:    () => { for(let i=0;i<256;i++){let t=i/255;let r=255*t,g=255*t**3,b=255*t**12;palette[i]=0xFF000000+(b<<16)+(g<<8)+r;}},
+  ocean:   () => { for(let i=0;i<256;i++){let t=i/255;let r=20*t*t*255,g=100*t*255,b=255*t*255;palette[i]=0xFF000000+(b<<16)+(g<<8)+r;}},
+  neon:    () => { for(let i=0;i<256;i++){let t=i/255;let r=255*Math.sin(t*12),g=255*Math.sin(t*12+2),b=255*Math.sin(t*12+4);palette[i]=0xFF000000+(Math.round(b)<<16)+(Math.round(g)<<8)+Math.round(r);}},
+  pastel:  () => { for(let i=0;i<256;i++){let h=i*360/256;let {r,g,b}=hslToRgb(h,0.5,0.8);palette[i]=0xFF000000+(b<<16)+(g<<8)+r;}}
+};
 
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      let re = centerX + (x - width/2)  * scale;
-      let im = centerY + (y - height/2) * scale;
+function hslToRgb(h,s,l){h/=360;const c=(1-Math.abs(2*l-1))*s,x=c*(1-Math.abs((h*6)%2-1)),m=l-c/2;let r,g,b;if(h<1/6)[r,g,b]=[c,x,0];else if(h<2/6)[r,g,b]=[x,c,0];else if(h<3/6)[r,g,b]=[0,c,x];else if(h<4/6)[r,g,b]=[0,x,c];else if(h<5/6)[r,g,b]=[x,0,c];else[r,g,b]=[c,0,x];return{r:Math.round((r+m)*255),g:Math.round((g+m)*255),b:Math.round((b+m)*255)};}
 
-      let zr = 0, zi = 0, n = 0;
-      let zr2 = 0, zi2 = 0;
-      while (zr2 + zi2 <= 4 && n < MAX_ITER) {
-        zi = 2 * zr * zi + im;
-        zr = zr2 - zi2 + re;
-        zr2 = zr*zr;
-        zi2 = zi*zi;
-        n++;
-      }
+function changePalette(name){
+  currentPalette = name;
+  palettes[name]();
+  render();
+}
 
-      const i = y * width + x;
-      if (n === MAX_ITER) {
-        buf[i] = 0xFF000000;
-      } else {
-        const log_zn = Math.log(zr2 + zi2) / 2;
-        nu = Math.log(log_zn / Math.LN2) / Math.LN2;
-        const mu = n + 1 - nu;
-        buf[i] = palette[Math.floor(mu * 3) % 256];   // your favorite speed
-      }
+// === RENDER ===
+function render(){
+  const scale = 4 / zoom / Math.min(width,height);
+  for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+    let re = centerX + (x-width/2)*scale;
+    let im = centerY + (y-height/2)*scale;
+    let zr=0,zi=0,n=0,zr2=0,zi2=0;
+    while(zr2+zi2<=4 && n<MAX_ITER){zi=2*zr*zi+im;zr=zr2-zi2+re;zr2=zr*zr;zi2=zi*zi;n++;}
+    const i=y*width+x;
+    if(n===MAX_ITER) buf[i]=0xFF000000;
+    else{
+      const logzn=Math.log(zr2+zi2)/2;
+      const nu=Math.log(logzn/Math.LN2)/Math.LN2;
+      const mu=n+1-nu;
+      buf[i]=palette[Math.floor(mu*3)%256];
     }
   }
-  ctx.putImageData(imageData, 0, 0);
+  ctx.putImageData(imageData,0,0);
   updateInfo();
 }
 
-function updateInfo() {
+function updateInfo(){
   infoZoom.textContent = zoom.toFixed(2);
   infoCX.textContent   = centerX.toFixed(10);
   infoCY.textContent   = centerY.toFixed(10);
-  
-  // UPDATE URL
-  const params = new URLSearchParams();
-  params.set('x', centerX.toFixed(12));
-  params.set('y', centerY.toFixed(12));
-  params.set('z', zoom.toFixed(6));
-  history.replaceState(null, '', '?' + params);
+  const p=new URLSearchParams({x:centerX.toFixed(12),y:centerY.toFixed(12),z:zoom.toFixed(6)});
+  history.replaceState(null,'','?'+p);
 }
 
-// ZOOM — YOUR FINAL CORRECT VERSION
+// === ZOOM (instant — your proven version) ===
 canvas.addEventListener('wheel', e => {
   e.preventDefault();
-  const zoomIn = e.deltaY < 0;   // scroll up = zoom in
+  const zoomIn = e.deltaY < 0;
   const factor = zoomIn ? ZOOM_FACTOR : 1/ZOOM_FACTOR;
 
   const rect = canvas.getBoundingClientRect();
   const mx = e.clientX - rect.left;
   const my = e.clientY - rect.top;
-  const scale = 4 / zoom / Math.min(width, height);
-  const wx = centerX + (mx - width/2) * scale;
-  const wy = centerY + (my - height/2) * scale;
+  const scale = 4 / zoom / Math.min(width,height);
+  const wx = centerX + (mx-width/2)*scale;
+  const wy = centerY + (my-height/2)*scale;
 
   zoom *= factor;
-  const newScale = 4 / zoom / Math.min(width, height);
-  centerX = wx - (mx - width/2) * newScale;
-  centerY = wy - (my - height/2) * newScale;
+  const newScale = 4 / zoom / Math.min(width,height);
+  centerX = wx - (mx-width/2)*newScale;
+  centerY = wy - (my-height/2)*newScale;
 
   render();
 });
 
-// PAN
-canvas.addEventListener('pointerdown', e => {
-  isDragging = true;
-  lastX = e.clientX;
-  lastY = e.clientY;
-  canvas.style.cursor = 'grabbing';
-});
-canvas.addEventListener('pointermove', e => {
-  if (!isDragging) return;
-  const dx = (e.clientX - lastX) / width  * 4 / zoom * PAN_SPEED;
-  const dy = (e.clientY - lastY) / height * 4 / zoom * PAN_SPEED;
-  centerX -= dx;
-  centerY -= dy;
-  lastX = e.clientX;
-  lastY = e.clientY;
+// === PAN ===
+canvas.addEventListener('pointerdown', e=>{isDragging=true;lastX=e.clientX;lastY=e.clientY;canvas.style.cursor='grabbing';});
+canvas.addEventListener('pointermove', e=>{
+  if(!isDragging) return;
+  const dx=(e.clientX-lastX)/width*4/zoom*PAN_SPEED;
+  const dy=(e.clientY-lastY)/height*4/zoom*PAN_SPEED;
+  centerX-=dx; centerY-=dy;
+  lastX=e.clientX; lastY=e.clientY;
   render();
 });
-canvas.addEventListener('pointerup', () => {
-  isDragging = false;
-  canvas.style.cursor = 'grab';
-});
+canvas.addEventListener('pointerup',()=>{isDragging=false;canvas.style.cursor='grab';});
 
-// RESET BUTTON
-function resetView() {
-  zoom = 1;
-  centerX = -0.5;
-  centerY = 0;
-  history.replaceState(null, '', location.pathname);
+// === RESET ===
+function resetView(){
+  zoom=1; centerX=-0.5; centerY=0;
+  document.getElementById('paletteSelect').value='rainbow';
+  changePalette('rainbow');
+  history.replaceState(null,'',location.pathname);
   render();
 }
 
-// LOAD FROM URL ON START
-const urlParams = new URLSearchParams(location.search);
-if (urlParams.has('x') && urlParams.has('y') && urlParams.has('z')) {
-  centerX = parseFloat(urlParams.get('x'));
-  centerY = parseFloat(urlParams.get('y'));
-  zoom    = parseFloat(urlParams.get('z'));
+// === URL LOAD ===
+const params=new URLSearchParams(location.search);
+if(params.has('x')&&params.has('y')&&params.has('z')){
+  centerX=parseFloat(params.get('x'));
+  centerY=parseFloat(params.get('y'));
+  zoom=parseFloat(params.get('z'));
 }
 
+// === INIT ===
+changePalette('rainbow');
 render();
 </script>
 </body>
+</html>
